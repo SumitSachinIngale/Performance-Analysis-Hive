@@ -137,7 +137,60 @@ group by
 
 9) Perform inner join based on the agent column and after joining the table export that data into your
 local system ??
+i would be performing sort merge bucket so i can get faster performance during joining
 
+set hive.enforce.bucketing = true; # this prop is enable to create bucket
+step 1) create a bucketed table from report_table_orc
+create external table report_table_bucket
+(
+id int,
+agent_name string,
+date date,
+login timestamp,
+logout timestamp,
+duration timestamp
+)
+clustered by (agent_name)
+sorted by (agent_name)
+into 4 buckets 
+row format delimited 
+fields terminated by ','
+stored as textfile ;
+
+insert into table report_table_bucket select * from report_table_orc;
+
+step 2) create a bucketed table from performance_table_orc
+create external table performance_table_bucket
+(
+id int,
+date date,
+agent_name string,
+total_chats int,
+average_response_time timestamp,
+average_resolution_time timestamp,
+average_rating float,
+total_feedback int
+)
+clustered by (agent_name)
+sorted by (agent_name)
+into 2 buckets 
+row format delimited 
+fields terminated by ','
+stored as textfile ;
+
+insert into table performance_table_bucket select * from performance_table_orc;
+
+step 3) to set some properties for smb bucketing
+set hive.optimize.bucketmapjoin = True;
+set hive.auto.convert.sortmerge.join = True;
+set hive.optimize.bucketmapjoin.sortedmerge = True;
+set hive.auto.convert.sortmerge.join.noconditionaltask = True;
+
+step 4) now performing inner join on this two bucketed table
+select * 
+from report_table_orc as a 
+inner join performance_table_orc as b 
+on a.agent_name = b.agent_name;
 
 10) Perform partitioning on top of the agent column and then on top of that perform bucketing for each partitioning for report file ??
 create external table report_table_partition 
