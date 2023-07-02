@@ -1,0 +1,161 @@
+--- Created a schema (report_table) on agent report file and then loaded the data from the file to the table ---
+create external table report_table
+(
+id int,
+agent_name string,
+date string,
+login string,
+logout string,
+duration string
+)
+row format delimited 
+fields terminated by ','
+stored as textfile
+tblproperties("skip.header.line.count" = "1", "serialization.null.format" = "");
+
+load data local inpath 'file:///home/cloudera/Desktop/AgentLogingReport.csv' into table report_table;
+
+--- Created a schema (performance_table) on agent report file  ---
+create external table performance_table
+(
+id int,
+date string,
+agent_name string,
+total_chats int,
+average_response_time string,
+average_resolution_time string,
+average_rating float,
+total_feedback int
+)
+row format delimited 
+fields terminated by ','
+stored as textfile
+tblproperties("skip.header.line.count" = "1", "serialization.null.format" = "");
+
+load data local inpath 'file:///home/cloudera/Desktop/AgentPerformance.csv' into table report_table;
+
+--- Create a table (report_table_orc) by applying some transformation on report_table data and loaded into it as orc output file (for better performance while analysing)---
+create external table report_table_orc 
+(
+id int,
+agent_name string,
+date date,
+login timestamp,
+logout timestamp,
+duration timestamp
+)
+stored as orc;
+
+insert into table report_table_orc 
+select id , lower(agent_name) as agent_name , to_date(from_unixtime(unix_timestamp(date,'dd-MMM-yyyy'))) as date , 
+from_unixtime(unix_timestamp(login,'HH:mm:ss')) as login , from_unixtime(unix_timestamp(logout,'HH:mm:ss')) as logout ,
+from_unixtime(unix_timestamp(duration,'HH:mm:ss')) as duration from report_table ;  
+
+--- Create a table (performance_table_orc) by applying some transformation on performance_table data and loaded into it as orc output file---
+create external table performance_table_orc
+(
+id int,
+date date,
+agent_name string,
+total_chats int,
+average_response_time timestamp,
+average_resolution_time timestamp,
+average_rating float,
+total_feedback int
+)
+stored as orc;
+
+insert into table performance_table_orc 
+select id , to_date(from_unixtime(unix_timestamp(date,'dd/MM/yyyy'))) as date , lower(agent_name) as agent_name , total_chats , 
+from_unixtime(unix_timestamp(average_response_time,'HH:mm:ss')) as average_response_time , 
+from_unixtime(unix_timestamp(average_resolution_time,'HH:mm:ss')) as average_resolution_time ,
+average_rating , total_feedback from performance_table ;  
+
+--- Now performing some analysis on the created schema on performance and report csv file ---
+1) List all agents names ??
+select agent_name from report_table_orc 
+union 
+select agent_name from performance_table_orc;
+
+2) Find out agent average rating ??
+select 
+  agent_name , avg(average_rating) as avg_rating
+from 
+  performance_table_orc
+group by 
+  agent_name ;
+
+3) Total working days for each agents ??
+select 
+  agent_name , count(date) 
+from 
+  report_table_orc
+group by 
+  agent_name ;
+
+4) Total feedback that each agent have got ??
+select 
+  agent_name , sum(total_feedback) as total_feedback
+from 
+  performance_table_orc
+group by 
+  agent_name ;
+
+5) Agent name who have average rating between 3.5 to 4 ??
+select 
+  distinct agent_name 
+from 
+  performance_table_orc 
+where 
+  average_rating between 3.5 and 4 ;
+
+6) Agent name who have rating less than 3.5 ??
+select 
+  distinct agent_name 
+from 
+  performance_table_orc 
+where 
+  average_rating < 3.5;
+
+7) Agent name who have rating more than 4.5 ??
+select 
+  distinct agent_name 
+from 
+  performance_table_orc 
+where 
+  average_rating >  4.5 ;
+
+8) How many feedback agents have received more than 4.5 average ??
+select 
+  agent_name , sum(total_feedback) as total_feedback 
+from 
+  performance_table_orc 
+where 
+  average_rating >  4.5 
+group by 
+  agent_name;
+
+9) Perform inner join based on the agent column and after joining the table export that data into your
+local system ??
+
+
+10) Perform partitioning on top of the agent column and then on top of that perform bucketing for each partitioning for report file ??
+create external table report_table_partition 
+(
+id int,
+agent_name string,
+date date,
+login timestamp,
+logout timestamp,
+duration timestamp
+)
+partitioned by (file_name string ,name string)
+clustered by (duration)
+sorted by (duration)
+into 2 buckets 
+row format delimited 
+fields terminated by '|'
+stored as textfile;
+
+insert into table report_table_partition partition(file_name = 'report' , name) 
+select a.*, agent_name from report_table_orc as a;
