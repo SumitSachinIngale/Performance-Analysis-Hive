@@ -187,12 +187,15 @@ set hive.optimize.bucketmapjoin.sortedmerge = True;
 set hive.auto.convert.sortmerge.join.noconditionaltask = True;
 
 step 4) now performing inner join on this two bucketed table
+insert overwrite local directory 'file:///home/cloudera/output' row format delimited fields terminated by ',' stored as textfile
 select * 
 from report_table_orc as a 
 inner join performance_table_orc as b 
 on a.agent_name = b.agent_name;
 
 10) Perform partitioning on top of the agent column and then on top of that perform bucketing for each partitioning for report file ??
+set hive.exec.dynamic.partition = true; # to enable dynamic partition
+set hive.exec.dynamic.partition.mode = Nonstrict; # to come out of strict mode which say should have atleast one static partition during insert
 create external table report_table_partition 
 (
 id int,
